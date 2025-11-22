@@ -1,3 +1,4 @@
+
 {
   "compilerOptions": {
     "target": "ES2022",
@@ -18,12 +19,18 @@
     "moduleDetection": "force",
     "allowJs": true,
     "jsx": "react-jsx",
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    },
     "allowImportingTsExtensions": true,
-    "noEmit": true
-  }
+    "noEmit": true,
+
+    
+    "baseUrl": "./src",
+
+  
+    "paths": {
+      "@/*": ["*"]
+    }
+  },
+
+
+  "include": ["src", "vite-env.d.ts"]
 }
