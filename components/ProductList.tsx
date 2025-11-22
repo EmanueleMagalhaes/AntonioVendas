@@ -52,18 +52,26 @@ const ProductList: React.FC<ProductListProps> = ({ products, onRefresh }) => {
     setError('');
     setIsSaving(true);
     try {
-      // Handle price input potentially being a string from the input field temporarily or number
-      const priceVal = typeof editingProduct.price === 'string' 
-        ? parseFloat((editingProduct.price as string).replace(',', '.')) 
-        : editingProduct.price;
+      // Robust price parsing handling both number and string inputs
+      let priceVal = 0;
+      const rawPrice = editingProduct.price as any;
+      
+      if (typeof rawPrice === 'string') {
+        priceVal = parseFloat(rawPrice.replace(',', '.'));
+      } else {
+        priceVal = Number(rawPrice);
+      }
+
+      if (isNaN(priceVal)) priceVal = 0;
 
       await saveProduct({
         ...editingProduct as any,
-        price: priceVal || 0
+        price: priceVal
       });
       setIsModalOpen(false);
       onRefresh();
     } catch (err: any) {
+      console.error(err);
       setError(err.message || "Erro ao salvar produto");
     } finally {
       setIsSaving(false);

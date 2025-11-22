@@ -122,7 +122,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved }
     setCart(newCart);
   };
 
-  const totalOrderValue = cart.reduce((acc, item) => acc + item.total, 0);
+  const totalOrderValue = cart.reduce((acc, item) => acc + item.total, 0) || 0;
 
   // -- Finalize Order --
   const handleSaveOrder = async () => {
@@ -441,7 +441,7 @@ const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved }
                     
                     {/* Mini Grid Preview */}
                     <div className="flex flex-wrap gap-1 mb-2">
-                       {Object.entries(item.sizes).filter(([_, q]) => (q as number) > 0).map(([size, qty]) => (
+                       {Object.entries(item.sizes).filter(([_, q]) => (q as any) > 0).map(([size, qty]) => (
                           <span key={size} className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
                              {size}: <b>{qty}</b>
                           </span>

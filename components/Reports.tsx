@@ -237,7 +237,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
                                     </td>
                                     <td className="px-4 py-2">
                                       <div className="flex gap-1 flex-wrap">
-                                        {Object.entries(item.sizes || {}).filter(([_, q]) => (q as number) > 0).map(([size, qty]) => (
+                                        {Object.entries(item.sizes || {}).filter(([_, q]) => (q as any) > 0).map(([size, qty]) => (
                                           <span key={size} className="bg-slate-200 px-1 rounded text-slate-700 font-medium">{size}: {qty}</span>
                                         ))}
                                       </div>

@@ -23,9 +23,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isMobile
     if (isMobile) setIsOpen(false);
   };
 
+  // Changed to flex-col and removed relative/absolute logic for footer to prevent layout bugs
   const containerClass = isMobile
-    ? `fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'}`
-    : `w-64 bg-slate-900 text-white min-h-screen flex-shrink-0 relative`;
+    ? `fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white transform transition-transform duration-300 ease-in-out flex flex-col ${isOpen ? 'translate-x-0' : '-translate-x-full'}`
+    : `w-64 bg-slate-900 text-white min-h-screen flex-shrink-0 flex flex-col`;
 
   return (
     <>
@@ -43,7 +44,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isMobile
             <span className="text-indigo-400">Antonio</span>Vendas
           </h1>
         </div>
-        <nav className="p-4 space-y-2">
+        
+        <nav className="p-4 space-y-2 flex-1">
           {menuItems.map((item) => (
             <button
               key={item.id}
@@ -59,7 +61,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isMobile
             </button>
           ))}
         </nav>
-        <div className="absolute bottom-0 w-full p-4 border-t border-slate-800 text-xs text-slate-500 text-center bg-slate-900">
+
+        {/* Footer uses mt-auto to sit at bottom naturally, preventing overlap */}
+        <div className="p-4 border-t border-slate-800 text-xs text-slate-500 text-center bg-slate-900 mt-auto">
           v1.1.0 - Projeto Vendas
         </div>
       </div>

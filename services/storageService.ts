@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { db } from '../src/firebaseConfig';
 import { 
   getFirestore, 
   collection, 
@@ -11,20 +11,6 @@ import {
   where 
 } from 'firebase/firestore';
 import { Client, Product, Order } from '../types';
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAh_EuYw2cFLb_fdkvbgj6UkbwnazgPtbY",
-  authDomain: "antoniovendas-5e671.firebaseapp.com",
-  projectId: "antoniovendas-5e671",
-  storageBucket: "antoniovendas-5e671.firebasestorage.app",
-  messagingSenderId: "759032572842",
-  appId: "1:759032572842:web:f876b6d767f9b5b15f19d3",
-  measurementId: "G-TZ81FQ4EPH"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
 
 // --- Helpers ---
 // In Firebase, we usually let Firestore generate IDs for new docs (addDoc), 
