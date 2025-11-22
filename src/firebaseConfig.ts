@@ -16,5 +16,11 @@ const firebaseConfig = {
 // ✅ Evita inicialização duplicada
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
+// ✅ Log opcional para ambiente de desenvolvimento
+if (import.meta.env.DEV) {
+  console.log("🔥 Firebase App inicializado:", app.name);
+  console.log("🔑 Configuração:", firebaseConfig);
+}
+
 export const db = getFirestore(app);
 export const auth = getAuth(app);

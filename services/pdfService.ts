@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Order, Client } from '../types';
 
+
 export const generateOrderPDF = (order: Order, client: Client) => {
   // Landscape orientation for wide table
   const doc = new jsPDF({ orientation: 'landscape' });

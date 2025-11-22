@@ -1,8 +1,8 @@
 import { db } from '../src/firebaseConfig';
+
 import { 
-  getFirestore, 
   collection, 
-  getDocs, 
+  getDocs,
   doc, 
   setDoc, 
   addDoc, 
@@ -10,6 +10,7 @@ import {
   query, 
   where 
 } from 'firebase/firestore';
+
 import { Client, Product, Order } from '../types';
 
 // --- Helpers ---

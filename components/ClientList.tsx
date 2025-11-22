@@ -5,6 +5,7 @@ import { Client } from '../types';
 import { db } from '../src/firebaseConfig';
 import { collection, addDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
 
+
 const ClientList: React.FC = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
