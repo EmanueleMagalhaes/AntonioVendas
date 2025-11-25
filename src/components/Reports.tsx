@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Calendar, Search, Filter, Download, ChevronDown, ChevronUp } from 'lucide-react';
-import { Order, Client } from '../types';
+import { Order, Client, normalizeDate } from '../types';
 import { generateOrderPDF } from '../services/pdfService';
 
 interface ReportsProps {
@@ -40,22 +40,23 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
   }, [preset]);
 
   const filteredOrders = useMemo(() => {
-    const startMs = startDate ? new Date(startDate).getTime() : 0;
-    const endMs = endDate ? new Date(endDate).getTime() + 86400000 : Date.now(); // Add 1 day to include the end date fully
+    const startMs = startDate ? new Date(`${startDate}T00:00:00`).getTime() : 0;
+    const endMs = endDate ? new Date(`${endDate}T23:59:59.999`).getTime() : Date.now();
 
     return orders.filter(order => {
-      const inDateRange = order.date >= startMs && order.date < endMs;
+      const orderDate = normalizeDate(order.date);
+      const inDateRange = orderDate >= startMs && orderDate < endMs;
       const matchesSearch = 
-        order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.clientName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.id.toLowerCase().includes(searchTerm.toLowerCase());
       return inDateRange && matchesSearch;
-    }).sort((a, b) => b.date - a.date);
+    }).sort((a, b) => normalizeDate(b.date) - normalizeDate(a.date));
   }, [orders, startDate, endDate, searchTerm]);
 
   const reportSummary = useMemo(() => {
     return {
       totalRevenue: filteredOrders.reduce(
-      (acc, o) => acc + (o.totalValue ?? o.total ?? o.totalAmount ?? 0), 
+      (acc, o) => acc + (o.totalValue ?? o.total ?? 0),
       0
     ),
     totalOrders: filteredOrders.length,

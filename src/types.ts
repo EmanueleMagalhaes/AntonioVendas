@@ -66,4 +66,16 @@ export interface Order {
   paymentMethod: string; // e.g. "Boleto"
 }
 
+export const normalizeDate = (date: any): number => {
+  if (!date) return 0;
+  // Se já for número (timestamp salvo como number)
+  if (typeof date === 'number') return date;
+  // Se for Timestamp do Firebase (tem o método toDate)
+  if (typeof date.toDate === 'function') return date.toDate().getTime();
+  // Se for objeto serializado do Firebase { seconds: ..., nanoseconds: ... }
+  if (date.seconds) return date.seconds * 1000;
+  // Tenta converter string ou objeto Date padrão
+  return new Date(date).getTime();
+};
+
 export type TimeFilter = '7' | '15' | '30' | 'all';

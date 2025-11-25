@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Order } from '../types';
+import { Order, normalizeDate } from '../types';
 import { TrendingUp, Users, ShoppingBag, DollarSign, Trophy, ArrowUpRight } from 'lucide-react';
+
 
 interface DashboardProps {
   orders: Order[];
@@ -15,7 +16,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
     const now = Date.now();
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
     const last30DaysOrders = orders.filter(o => {
-    const orderDate = typeof o.date === 'number' ? o.date : new Date(o.date).getTime();
+    const orderDate = normalizeDate(o.date);
     return now - orderDate < thirtyDaysMs;
     });
 
@@ -27,13 +28,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
     // Top 5 Products logic
     const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
 
-    // console.log("📊 Dados recebidos no Dashboard:", {
-    //   orders,
-    //   clientCount,
-    //   productCount
-    // });
-
-    
+       
     last30DaysOrders.forEach(order => {
       order.items.forEach(item => {
         if (!productSales[item.reference]) {
