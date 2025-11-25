@@ -1,3 +1,5 @@
+import { Timestamp, FieldValue } from "firebase/firestore"; 
+
 export interface Client {
   id: string;
   companyName: string; // Empresa
@@ -16,8 +18,9 @@ export interface Client {
   
   cpfCnpj: string;
   stateRegistration?: string; // Inscrição Estadual
-  createdAt: number;
+  createdAt?: Timestamp | FieldValue;
 }
+export type ClientCreate = Omit<Client, "id" | "createdAt">;
 
 export interface Product {
   id: string;
@@ -53,9 +56,9 @@ export interface Order {
   clientName: string; // Stores company name usually
   items: OrderItem[];
   totalValue: number;
-  date: number; // Timestamp
-  status: 'pending' | 'completed' | 'cancelled';
-  notes?: string;
+  date?: Timestamp | FieldValue; // Timestamp
+  status: string;
+  
   
   // New fields
   freight: string;       // 'CIF' | 'FOB'

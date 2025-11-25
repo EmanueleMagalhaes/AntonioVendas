@@ -17,6 +17,16 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
+  console.log("📄 Dados recebidos no Reports:", { orders, clients });
+
+  const totalOrders = orders?.length || 0;
+  const totalRevenue = orders?.reduce((acc, order) => acc + (order.total || 0), 0) || 0;
+
+  const totalClients = clients?.length || 0;
+
+  console.log("📊 Totais calculados:", { totalOrders, totalRevenue, totalClients });
+
+
   // Initialize dates on mount or preset change
   React.useEffect(() => {
     if (preset !== 'custom') {
@@ -44,11 +54,17 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
 
   const reportSummary = useMemo(() => {
     return {
-      totalRevenue: filteredOrders.reduce((acc, o) => acc + o.totalValue, 0),
-      totalOrders: filteredOrders.length,
-      totalItems: filteredOrders.reduce((acc, o) => acc + o.items.reduce((sum, i) => sum + i.quantity, 0), 0)
-    };
-  }, [filteredOrders]);
+      totalRevenue: filteredOrders.reduce(
+      (acc, o) => acc + (o.totalValue ?? o.total ?? o.totalAmount ?? 0), 
+      0
+    ),
+    totalOrders: filteredOrders.length,
+    totalItems: filteredOrders.reduce(
+      (acc, o) => acc + (o.items?.reduce((sum, i) => sum + (i.quantity ?? 0), 0) ?? 0),
+      0
+    ),
+  };
+}, [filteredOrders]);
 
   const handlePrint = (order: Order) => {
     const client = clients.find(c => c.id === order.clientId);
@@ -168,7 +184,34 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredOrders.map(order => (
+              {filteredOrders.map(order => {
+                console.log("🧾 Pedido individual:", {
+                  cliente: order.clientName,
+                  valor: order.totalValue ?? order.total ?? order.totalAmount,
+                  data: order.createdAt || order.date,
+                });
+                console.log("🧾 Valores dos pedidos:", orders.map(o => ({
+                  id: o.id,
+                  totalValue: o.totalValue,
+                  total: o.total,
+                  totalAmount: o.totalAmount
+                })));
+                console.log("🧾 Pedido individual:", {
+                  id: order.id,
+                  cliente: order.clientName,
+                  totalValue: order.totalValue,
+                  total: order.total,
+                  totalAmount: order.totalAmount,
+                  itens: order.items?.map(i => ({
+                    descricao: i.description,
+                    unitPrice: i.unitPrice,
+                    quantity: i.quantity,
+                    total: i.total
+                  }))
+                });
+                console.log("🔍 Exemplo de um pedido:", orders[0]);
+
+                return (
                 <React.Fragment key={order.id}>
                   <tr 
                     className={`hover:bg-slate-50 transition-colors cursor-pointer ${expandedRow === order.id ? 'bg-slate-50' : ''}`}
@@ -189,7 +232,7 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
                       {order.items.length} itens • {order.items.reduce((s, i) => s + i.quantity, 0)} un.
                     </td>
                     <td className="p-4 text-right font-bold text-emerald-600">
-                      R$ {order.totalValue.toFixed(2)}
+                      R$ {(order.totalValue ?? order.total ?? 0).toFixed(2)}
                     </td>
                     <td className="p-4 text-center">
                       <button 
@@ -255,7 +298,8 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
                     </tr>
                   )}
                 </React.Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {filteredOrders.length === 0 && (

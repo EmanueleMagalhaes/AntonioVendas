@@ -8,12 +8,16 @@ interface DashboardProps {
   productCount: number;
 }
 
+
 const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount }) => {
   // Calculate metrics for the last 30 days
   const stats = useMemo(() => {
     const now = Date.now();
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    const last30DaysOrders = orders.filter(o => (now - o.date) < thirtyDaysMs);
+    const last30DaysOrders = orders.filter(o => {
+    const orderDate = typeof o.date === 'number' ? o.date : new Date(o.date).getTime();
+    return now - orderDate < thirtyDaysMs;
+    });
 
     const totalRevenue = last30DaysOrders.reduce((acc, o) => acc + o.totalValue, 0);
     
@@ -22,6 +26,13 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
     
     // Top 5 Products logic
     const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
+
+    // console.log("📊 Dados recebidos no Dashboard:", {
+    //   orders,
+    //   clientCount,
+    //   productCount
+    // });
+
     
     last30DaysOrders.forEach(order => {
       order.items.forEach(item => {
@@ -189,7 +200,10 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
                    <p className="text-xs text-indigo-400 mt-1">R$ {order.totalValue.toFixed(2)}</p>
                  </div>
                  <div className="ml-auto text-xs text-slate-500">
-                    {new Date(order.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit'})}
+                    {order.date?.toDate
+                      ? order.date.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit'})
+                      : new Date(order.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit'})
+                    }
                  </div>
               </div>
             ))}

@@ -7,8 +7,14 @@ import ProductList from './components/ProductList';
 import OrderForm from './components/OrderForm';
 import Reports from './components/Reports';
 import { Menu, Loader2, RefreshCw, AlertCircle } from 'lucide-react';
-import { seedInitialProducts, getClients, getProducts, getOrders } from './services/storageService';
+import { seedInitialProducts, seedInitialClients, getClients, getProducts, getOrders } from './services/storageService';
 import { Client, Product, Order } from './types';
+
+
+
+// ✅ IMPORT FIRESTORE PARA TESTE
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from './firebaseConfig';
 
 
 function App() {
@@ -36,6 +42,17 @@ function App() {
     setIsLoading(true);
     setLoadingError(null);
 
+  
+// ✅ TESTE RÁPIDO DE FIRESTORE (ADICIONE AQUI)
+    try {
+      const snapshot = await getDocs(collection(db, "clients"));
+      console.log("✅ Firestore acessível. Documentos:", snapshot.size);
+    } catch (error) {
+      console.error("❌ Erro ao acessar Firestore:", error);
+    }
+    // ✅ FIM DO TESTE
+  
+
     // Safety timeout: If Firebase hangs for 12 seconds, show retry button
     const timeoutId = setTimeout(() => {
       setIsLoading((current) => {
@@ -49,10 +66,16 @@ function App() {
 
     try {
       await seedInitialProducts();
+      await seedInitialClients(); // ✅ Adiciona clientes iniciais se não houver
       await refreshData();
       clearTimeout(timeoutId); // Success, clear timeout
     } catch (error: any) {
-      console.error("Error loading data", error);
+      console.error("Error no initData", error);
+      
+      if (error instanceof Error) {
+        console.error("Stack:", error.stack);
+      }
+
       setLoadingError(error.message || "Erro ao conectar com o banco de dados.");
     } finally {
       setIsLoading(false);
@@ -71,13 +94,20 @@ function App() {
       setClients(c);
       setProducts(p);
       setOrders(o);
+      console.log("✅ Dados atualizados:", { clientes: c.length, produtos: p.length, pedidos: o.length });
     } catch (error) {
-      console.error("Error refreshing data", error);
+      
+      console.error("❌ Erro no refreshData:", error);
+        if (error instanceof Error) {
+          console.error("Stack:", error.stack);
+      }
+
       throw error;
     }
   };
 
   const renderContent = () => {
+    console.log("🔥 renderContent chamado, currentView:", currentView);
     if (isLoading && clients.length === 0) {
       return (
         <div className="flex flex-col items-center justify-center h-full p-6">
@@ -112,7 +142,8 @@ function App() {
       case 'dashboard':
         return <Dashboard orders={orders} clientCount={clients.length} productCount={products.length} />;
       case 'clients':
-        return <ClientList clients={clients} onRefresh={refreshData} />;
+        console.log("Renderizando ClientList no App");
+        return <ClientList onRefresh={refreshData} />;
       case 'products':
         return <ProductList products={products} onRefresh={refreshData} />;
       case 'new-order':
