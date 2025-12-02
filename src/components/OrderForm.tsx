@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Trash2, Save, Share2, FileText, CheckCircle, Search, User, Package, Building2, Truck, CreditCard, Loader2 } from 'lucide-react';
 import { Client, Product, OrderItem, Order } from '../types';
-import { saveOrder } from '../services/storageService';
+import { saveOrder, updateOrder } from '../services/storageService';
 import { generateOrderPDF, shareViaWhatsApp } from '../services/pdfService';
 
 interface OrderFormProps {
   clients: Client[];
   products: Product[];
   onOrderSaved: () => void;
+  initialOrder?: Order | null;
+  onNewOrder?: () => void;
 }
 
 const SIZES = ['33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46'];
 
-const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved }) => {
+const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved, initialOrder, onNewOrder }) => {
   // State
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch] = useState('');
@@ -34,6 +36,27 @@ const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved }
   // Feedback State
   const [isSaving, setIsSaving] = useState(false);
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
+
+  // EFFECT: Preencher formulário se for edição
+  useEffect(() => {
+    if (initialOrder) {
+      // Encontrar cliente correspondente
+      const client = clients.find(c => c.id === initialOrder.clientId);
+      if (client) setSelectedClient(client);
+
+      // Preencher campos
+      setCart(initialOrder.items);
+      setFreight(initialOrder.freight || 'FOB');
+      setPaymentTerms(initialOrder.paymentTerms || '');
+      setPaymentMethod(initialOrder.paymentMethod || '');
+      
+      // Resetar estado de sucesso caso estivesse ativo
+      setSavedOrder(null);
+    } else {
+      // Resetar se for novo pedido
+      handleNewOrder();
+    }
+  }, [initialOrder, clients]);
 
   // -- Client Search Logic --
   const filteredClients = clients.filter(c => {
@@ -130,18 +153,31 @@ const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved }
 
     setIsSaving(true);
     try {
-      const order = await saveOrder({
+      const orderData = {
         clientId: selectedClient.id,
         clientName: selectedClient.companyName || selectedClient.name,
         items: cart,
         totalValue: totalOrderValue,
-        status: 'pending',
+        status: 'pending' as const,
         freight,
         paymentTerms,
         paymentMethod
-      });
+      };
 
-      setSavedOrder(order);
+      let resultOrder;
+
+      //  LÓGICA DE SALVAR VS ATUALIZAR
+      if (initialOrder && initialOrder.id) {
+        // Atualizar existente
+        const updatedOrderData = { ...orderData, id: initialOrder.id, date: initialOrder.date };
+        await updateOrder(updatedOrderData as Order);
+        resultOrder = updatedOrderData;
+      } else {
+        // Salvar novo
+        resultOrder = await saveOrder(orderData);
+      }
+
+      setSavedOrder(resultOrder as Order);
       onOrderSaved();
     } catch (error) {
       console.error("Error saving order", error);
@@ -183,7 +219,10 @@ const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved }
               <Share2 size={20} /> Enviar no WhatsApp
             </button>
             <button 
-              onClick={handleNewOrder}
+              onClick={() => {
+                handleNewOrder();
+                if (onNewOrder) onNewOrder(); 
+              }}
               className="w-full py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 mt-4"
             >
               Criar Novo Pedido

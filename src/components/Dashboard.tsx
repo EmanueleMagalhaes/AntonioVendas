@@ -55,6 +55,12 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
     };
   }, [orders]);
 
+  const recentOrders = useMemo(() => {
+    return [...orders]
+      .sort((a, b) => normalizeDate(b.date) - normalizeDate(a.date))
+      .slice(0, 5);
+  }, [orders]);
+
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
       <div className="flex justify-between items-end mb-4">
@@ -185,7 +191,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
         <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-lg">
           <h3 className="font-bold mb-6 text-lg">Atividade Recente</h3>
           <div className="space-y-6">
-            {orders.slice(0, 5).map((order) => (
+            {recentOrders.map((order) => (
+              
               <div key={order.id} className="flex items-start gap-3 relative">
                  <div className="absolute left-[5px] top-8 bottom-[-24px] w-px bg-slate-700 last:hidden"></div>
                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 mt-1.5 relative z-10"></div>
@@ -202,7 +209,7 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
                  </div>
               </div>
             ))}
-            {orders.length === 0 && <p className="text-slate-500 text-sm">Sem atividades recentes.</p>}
+            {recentOrders.length === 0 && <p className="text-slate-500 text-sm">Sem atividades recentes.</p>}
           </div>
         </div>
       </div>

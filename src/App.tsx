@@ -12,7 +12,7 @@ import { Client, Product, Order } from './types';
 
 
 
-// ✅ IMPORT FIRESTORE PARA TESTE
+//  IMPORT FIRESTORE PARA TESTE
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 
@@ -28,6 +28,8 @@ function App() {
   const [clients, setClients] = useState<Client[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
 
   // Initialize
   useEffect(() => {
@@ -66,7 +68,7 @@ function App() {
 
     try {
       await seedInitialProducts();
-      await seedInitialClients(); // ✅ Adiciona clientes iniciais se não houver
+      await seedInitialClients(); //  Adiciona clientes iniciais se não houver
       await refreshData();
       clearTimeout(timeoutId); // Success, clear timeout
     } catch (error: any) {
@@ -104,6 +106,20 @@ function App() {
 
       throw error;
     }
+  };
+
+  // Handler para iniciar edição
+  const handleEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    setCurrentView('new-order');
+  };
+
+  // Handler para limpar edição ao sair
+  const handleViewChange = (view: string) => {
+    if (view !== 'new-order') {
+      setEditingOrder(null);
+    }
+    setCurrentView(view);
   };
 
   const renderContent = () => {
@@ -147,9 +163,27 @@ function App() {
       case 'products':
         return <ProductList products={products} onRefresh={refreshData} />;
       case 'new-order':
-        return <OrderForm clients={clients} products={products} onOrderSaved={refreshData} />;
+        return (
+          <OrderForm 
+            clients={clients} 
+            products={products} 
+            onOrderSaved={() => {
+              refreshData();
+              
+            }}
+            onNewOrder={() => setEditingOrder(null)} 
+            initialOrder={editingOrder} // Prop nova
+          />
+        );
       case 'reports':
-        return <Reports orders={orders} clients={clients} />;
+        return (
+          <Reports 
+            orders={orders} 
+            clients={clients} 
+            onEditOrder={handleEditOrder} // Prop nova
+            onRefresh={refreshData}       // Prop nova
+          />
+        );
       default:
         return <Dashboard orders={orders} clientCount={clients.length} productCount={products.length} />;
     }
@@ -171,7 +205,7 @@ function App() {
 
         <Sidebar 
           currentView={currentView} 
-          setCurrentView={setCurrentView} 
+          setCurrentView={handleViewChange} 
           isMobile={isMobile}
           isOpen={isSidebarOpen}
           setIsOpen={setIsSidebarOpen}

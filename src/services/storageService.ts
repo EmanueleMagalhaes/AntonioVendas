@@ -6,6 +6,7 @@ import {
   setDoc, 
   addDoc, 
   deleteDoc,
+  updateDoc,
   query, 
   where,
   serverTimestamp,
@@ -237,6 +238,34 @@ export const saveOrder = async (order: Omit<Order, 'id' | 'date'>): Promise<Orde
     return { id: docRef.id, ...newOrderData } as Order;
   } catch (error) {
     console.error("❌ Erro ao salvar pedido:", error);
+    throw error;
+  }
+};
+
+// Atualizar Pedido
+export const updateOrder = async (order: Order): Promise<void> => {
+  try {
+    if (!order.id) throw new Error("ID do pedido é obrigatório para atualização");
+    
+    // Removemos campos que não devem ser sobrescritos acidentalmente se não forem passados, 
+    // mas garantimos que a data original seja preservada se não formos mudar a data de criação.
+    // Aqui assumimos que 'date' é mantido.
+    
+    const docRef = doc(db, 'orders', order.id);
+    // Usamos updateDoc para atualizar apenas os campos passados
+    await updateDoc(docRef, { ...order }); 
+  } catch (error) {
+    console.error("❌ Erro ao atualizar pedido:", error);
+    throw error;
+  }
+};
+
+//  Deletar Pedido
+export const deleteOrder = async (id: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, 'orders', id));
+  } catch (error) {
+    console.error("❌ Erro ao deletar pedido:", error);
     throw error;
   }
 };
