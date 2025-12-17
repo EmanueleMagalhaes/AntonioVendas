@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { Order } from '../types';
+import { Order, normalizeDate } from '../types';
 import { TrendingUp, Users, ShoppingBag, DollarSign, Trophy, ArrowUpRight } from 'lucide-react';
+
 
 interface DashboardProps {
   orders: Order[];
@@ -8,12 +9,16 @@ interface DashboardProps {
   productCount: number;
 }
 
+
 const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount }) => {
   // Calculate metrics for the last 30 days
   const stats = useMemo(() => {
     const now = Date.now();
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-    const last30DaysOrders = orders.filter(o => (now - o.date) < thirtyDaysMs);
+    const last30DaysOrders = orders.filter(o => {
+    const orderDate = normalizeDate(o.date);
+    return now - orderDate < thirtyDaysMs;
+    });
 
     const totalRevenue = last30DaysOrders.reduce((acc, o) => acc + o.totalValue, 0);
     
@@ -22,7 +27,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
     
     // Top 5 Products logic
     const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
-    
+
+       
     last30DaysOrders.forEach(order => {
       order.items.forEach(item => {
         if (!productSales[item.reference]) {
@@ -48,6 +54,12 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
       topProducts
     };
   }, [orders]);
+
+  const recentOrders = useMemo(() => {
+    return [...orders]
+      .sort((a, b) => normalizeDate(b.date) - normalizeDate(a.date))
+      .slice(0, 5);
+  }, [orders]);
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-8">
@@ -179,7 +191,8 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
         <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-lg">
           <h3 className="font-bold mb-6 text-lg">Atividade Recente</h3>
           <div className="space-y-6">
-            {orders.slice(0, 5).map((order) => (
+            {recentOrders.map((order) => (
+              
               <div key={order.id} className="flex items-start gap-3 relative">
                  <div className="absolute left-[5px] top-8 bottom-[-24px] w-px bg-slate-700 last:hidden"></div>
                  <div className="w-2.5 h-2.5 rounded-full bg-indigo-500 mt-1.5 relative z-10"></div>
@@ -189,11 +202,14 @@ const Dashboard: React.FC<DashboardProps> = ({ orders, clientCount, productCount
                    <p className="text-xs text-indigo-400 mt-1">R$ {order.totalValue.toFixed(2)}</p>
                  </div>
                  <div className="ml-auto text-xs text-slate-500">
-                    {new Date(order.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit'})}
+                    {order.date?.toDate
+                      ? order.date.toDate().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit'})
+                      : new Date(order.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit'})
+                    }
                  </div>
               </div>
             ))}
-            {orders.length === 0 && <p className="text-slate-500 text-sm">Sem atividades recentes.</p>}
+            {recentOrders.length === 0 && <p className="text-slate-500 text-sm">Sem atividades recentes.</p>}
           </div>
         </div>
       </div>

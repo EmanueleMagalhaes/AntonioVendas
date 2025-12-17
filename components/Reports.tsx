@@ -1,21 +1,34 @@
 import React, { useState, useMemo } from 'react';
-import { Calendar, Search, Filter, Download, ChevronDown, ChevronUp } from 'lucide-react';
-import { Order, Client } from '../types';
+import { Calendar, Search, Filter, Download, ChevronDown, ChevronUp, Edit, Trash2 } from 'lucide-react';
+import { Order, Client, normalizeDate } from '../types';
 import { generateOrderPDF } from '../services/pdfService';
+import { deleteOrder } from '../services/storageService';
 
 interface ReportsProps {
   orders: Order[];
   clients: Client[];
+  onEditOrder: (order: Order) => void; 
+  onRefresh: () => void;
 }
 
 type DateRangePreset = '7' | '15' | '30' | 'custom';
 
-const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
+const Reports: React.FC<ReportsProps> = ({ orders, clients, onEditOrder, onRefresh }) => {
   const [preset, setPreset] = useState<DateRangePreset>('7');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  console.log("📄 Dados recebidos no Reports:", { orders, clients });
+
+  const totalOrders = orders?.length || 0;
+  const totalRevenue = orders?.reduce((acc, order) => acc + (order.total || 0), 0) || 0;
+
+  const totalClients = clients?.length || 0;
+
+  console.log("📊 Totais calculados:", { totalOrders, totalRevenue, totalClients });
+
 
   // Initialize dates on mount or preset change
   React.useEffect(() => {
@@ -30,25 +43,32 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
   }, [preset]);
 
   const filteredOrders = useMemo(() => {
-    const startMs = startDate ? new Date(startDate).getTime() : 0;
-    const endMs = endDate ? new Date(endDate).getTime() + 86400000 : Date.now(); // Add 1 day to include the end date fully
+    const startMs = startDate ? new Date(`${startDate}T00:00:00`).getTime() : 0;
+    const endMs = endDate ? new Date(`${endDate}T23:59:59.999`).getTime() : Date.now();
 
     return orders.filter(order => {
-      const inDateRange = order.date >= startMs && order.date < endMs;
+      const orderDate = normalizeDate(order.date);
+      const inDateRange = orderDate >= startMs && orderDate < endMs;
       const matchesSearch = 
-        order.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (order.clientName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.id.toLowerCase().includes(searchTerm.toLowerCase());
       return inDateRange && matchesSearch;
-    }).sort((a, b) => b.date - a.date);
+    }).sort((a, b) => normalizeDate(b.date) - normalizeDate(a.date));
   }, [orders, startDate, endDate, searchTerm]);
 
   const reportSummary = useMemo(() => {
     return {
-      totalRevenue: filteredOrders.reduce((acc, o) => acc + o.totalValue, 0),
-      totalOrders: filteredOrders.length,
-      totalItems: filteredOrders.reduce((acc, o) => acc + o.items.reduce((sum, i) => sum + i.quantity, 0), 0)
-    };
-  }, [filteredOrders]);
+      totalRevenue: filteredOrders.reduce(
+      (acc, o) => acc + (o.totalValue ?? o.total ?? 0),
+      0
+    ),
+    totalOrders: filteredOrders.length,
+    totalItems: filteredOrders.reduce(
+      (acc, o) => acc + (o.items?.reduce((sum, i) => sum + (i.quantity ?? 0), 0) ?? 0),
+      0
+    ),
+  };
+}, [filteredOrders]);
 
   const handlePrint = (order: Order) => {
     const client = clients.find(c => c.id === order.clientId);
@@ -57,6 +77,20 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
       generateOrderPDF(order, client).save(`Pedido_${order.id}.pdf`);
     } else {
       alert('Dados do cliente não encontrados para gerar PDF.');
+    }
+  };
+
+  // Excluir Pedido
+  const handleDelete = async (orderId: string) => {
+    if (confirm("Tem certeza que deseja excluir este pedido? Esta ação não pode ser desfeita.")) {
+      try {
+        await deleteOrder(orderId);
+        onRefresh(); // Atualiza a lista via App
+        alert("Pedido excluído com sucesso.");
+      } catch (e) {
+        console.error(e);
+        alert("Erro ao excluir pedido.");
+      }
     }
   };
 
@@ -168,7 +202,37 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredOrders.map(order => (
+              {filteredOrders.map(order => {
+                const dateObj = order.date && typeof order.date.toDate === 'function' 
+                  ? order.date.toDate() 
+                  : new Date(order.date);
+                console.log("🧾 Pedido individual:", {
+                  cliente: order.clientName,
+                  valor: order.totalValue ?? order.total ?? order.totalAmount,
+                  data: order.createdAt || order.date,
+                });
+                console.log("🧾 Valores dos pedidos:", orders.map(o => ({
+                  id: o.id,
+                  totalValue: o.totalValue,
+                  total: o.total,
+                  totalAmount: o.totalAmount
+                })));
+                console.log("🧾 Pedido individual:", {
+                  id: order.id,
+                  cliente: order.clientName,
+                  totalValue: order.totalValue,
+                  total: order.total,
+                  totalAmount: order.totalAmount,
+                  itens: order.items?.map(i => ({
+                    descricao: i.description,
+                    unitPrice: i.unitPrice,
+                    quantity: i.quantity,
+                    total: i.total
+                  }))
+                });
+                console.log("🔍 Exemplo de um pedido:", orders[0]);
+
+                return (
                 <React.Fragment key={order.id}>
                   <tr 
                     className={`hover:bg-slate-50 transition-colors cursor-pointer ${expandedRow === order.id ? 'bg-slate-50' : ''}`}
@@ -178,8 +242,9 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
                       {expandedRow === order.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                     </td>
                     <td className="p-4 text-slate-600">
-                      {new Date(order.date).toLocaleDateString('pt-BR')}
-                      <div className="text-xs text-slate-400">{new Date(order.date).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</div>
+                      {dateObj.toLocaleDateString('pt-BR')}
+                      
+                      <div className="text-xs text-slate-400">{dateObj.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})}</div>
                     </td>
                     <td className="p-4 font-medium text-slate-800">
                       {order.clientName}
@@ -189,16 +254,32 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
                       {order.items.length} itens • {order.items.reduce((s, i) => s + i.quantity, 0)} un.
                     </td>
                     <td className="p-4 text-right font-bold text-emerald-600">
-                      R$ {order.totalValue.toFixed(2)}
+                      R$ {(order.totalValue ?? order.total ?? 0).toFixed(2)}
                     </td>
                     <td className="p-4 text-center">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handlePrint(order); }}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
-                        title="Baixar PDF"
-                      >
-                        <Download size={18} />
-                      </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); onEditOrder(order); }}
+                          className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors"
+                          title="Editar Pedido"
+                        >
+                          <Edit size={18} />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handlePrint(order); }}
+                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+                          title="Baixar PDF"
+                        >
+                          <Download size={18} />
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDelete(order.id); }}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors"
+                          title="Excluir Pedido"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   
@@ -255,7 +336,8 @@ const Reports: React.FC<ReportsProps> = ({ orders, clients }) => {
                     </tr>
                   )}
                 </React.Fragment>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {filteredOrders.length === 0 && (

@@ -1,12 +1,18 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, MapPin, Phone, Mail, Building2, User, FileText, Edit, Loader2 } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Plus, Search, MapPin, Phone, Mail, Building2, User, FileText, Edit, Loader2, Trash2 } from 'lucide-react';
 import { Client } from '../types';
-import { db } from '../src/firebaseConfig';
-import { collection, addDoc, updateDoc, doc, getDocs } from 'firebase/firestore';
+import { db } from '../firebaseConfig';
+import { collection, addDoc, updateDoc, doc, getDocs, deleteDoc  } from 'firebase/firestore';
 
 
-const ClientList: React.FC = () => {
+interface ClientListProps {
+  onRefresh: () => void;
+}
+
+
+const ClientList: React.FC<ClientListProps> = ({onRefresh }) => {
+  console.log("🔥 ClientList montado");
   const [clients, setClients] = useState<Client[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,15 +37,54 @@ const ClientList: React.FC = () => {
   });
 
   // ✅ Buscar clientes do Firestore
-  const fetchClients = async () => {
-    const querySnapshot = await getDocs(collection(db, 'clients'));
-    const data: Client[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
-    setClients(data);
+  const fetchClients = useCallback(async () => {
+    try {
+      const querySnapshot = await getDocs(collection(db, 'clients'));
+      const data: Client[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+      setClients(data);
+    } catch (error) {
+      console.error("Erro ao buscar clientes:", error);
+    }
+  }, []);
+
+
+  
+useEffect(() => {
+  console.log("🔥 Teste de conexão iniciado");
+  const testConnection = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, "clients"));
+      console.log("✅ Conexão OK. Documentos:", snapshot.docs.length);
+    } catch (error) {
+      console.error("❌ Erro na conexão com Firestore:", error);
+      alert("Erro na conexão: " + (error as Error).message);
+    }
   };
+  testConnection();
+}, []);
+
+
+
+
 
   useEffect(() => {
     fetchClients();
   }, []);
+
+  // ⭐ ADIÇÃO: Função para excluir cliente
+  const handleDelete = async (clientId: string) => {
+    const confirmed = confirm("Tem certeza que deseja excluir este cliente?");
+    if (!confirmed) return;
+
+    try {
+      await deleteDoc(doc(db, 'clients', clientId));
+      alert("Cliente excluído com sucesso!");
+      fetchClients();
+    } catch (error) {
+      console.error("Erro ao excluir cliente:", error);
+      alert("Erro ao excluir cliente.");
+    }
+  };
 
   const filteredClients = useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -154,10 +199,18 @@ const ClientList: React.FC = () => {
           <div key={client.id} className="bg-white p-5 rounded-xl shadow-sm border border-slate-100 hover:shadow-md transition-shadow group relative">
             <button
               onClick={() => handleEdit(client)}
-              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+              className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
               title="Editar Cliente"
             >
               <Edit size={18} />
+            </button>
+            {/* ⭐ ADIÇÃO: Botão Excluir */}
+            <button
+              onClick={() => handleDelete(client.id)}
+              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full"
+              title="Excluir Cliente"
+            >
+              <Trash2 size={18} />
             </button>
             <div className="flex justify-between items-start mb-2 pr-10">
               <div>
@@ -220,8 +273,153 @@ const ClientList: React.FC = () => {
               {editingId ? 'Editar Cliente' : 'Cadastrar Cliente'}
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Form fields iguais aos seus */}
-              {/* ... */}
+              {/* Nome da empresa */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Empresa</label>
+                <input
+                  type="text"
+                  value={clientForm.companyName || ''}
+                  onChange={(e) => setClientForm({ ...clientForm, companyName: e.target.value })}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                  required
+                />
+              </div>
+
+              {/* Nome do responsável */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Responsável</label>
+                <input
+                  type="text"
+                  value={clientForm.name || ''}
+                  onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                  required
+                />
+              </div>
+
+              {/* Telefones */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Telefone</label>
+                  <input
+                    type="text"
+                    value={clientForm.phone || ''}
+                    onChange={(e) => setClientForm({ ...clientForm, phone: e.target.value })}
+                    className="mt-1 w-full border rounded-lg px-3 py-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Telefone Secundário</label>
+                  <input
+                    type="text"
+                    value={clientForm.phone2 || ''}
+                    onChange={(e) => setClientForm({ ...clientForm, phone2: e.target.value })}
+                    className="mt-1 w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700">E-mail</label>
+                <input
+                  type="email"
+                  value={clientForm.email || ''}
+                  onChange={(e) => setClientForm({ ...clientForm, email: e.target.value })}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+
+              {/* CEP */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700">CEP</label>
+                <input
+                  type="text"
+                  value={clientForm.zipCode || ''}
+                  onChange={(e) => setClientForm({ ...clientForm, zipCode: e.target.value })}
+                  onBlur={checkCep}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+
+              {/* Endereço completo */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Rua</label>
+                  <input
+                    type="text"
+                    value={clientForm.address || ''}
+                    onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })}
+                    className="mt-1 w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Número</label>
+                  <input
+                    type="text"
+                    value={clientForm.number || ''}
+                    onChange={(e) => setClientForm({ ...clientForm, number: e.target.value })}
+                    className="mt-1 w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Bairro</label>
+                  <input
+                    type="text"
+                    value={clientForm.neighborhood || ''}
+                    onChange={(e) => setClientForm({ ...clientForm, neighborhood: e.target.value })}
+                    className="mt-1 w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+              </div>
+
+              {/* Cidade e Estado */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Cidade</label>
+                  <input
+                    type="text"
+                    value={clientForm.city || ''}
+                    onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })}
+                    className="mt-1 w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">Estado (UF)</label>
+                  <input
+                    type="text"
+                    maxLength={2}
+                    value={clientForm.state || ''}
+                    onChange={(e) => setClientForm({ ...clientForm, state: e.target.value })}
+                    className="mt-1 w-full border rounded-lg px-3 py-2"
+                  />
+                </div>
+              </div>
+
+              {/* CPF / CNPJ */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700">CPF/CNPJ</label>
+                <input
+                  type="text"
+                  value={clientForm.cpfCnpj || ''}
+                  onChange={(e) => setClientForm({ ...clientForm, cpfCnpj: e.target.value })}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+
+              {/* Inscrição Estadual */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700">Inscrição Estadual</label>
+                <input
+                  type="text"
+                  value={clientForm.stateRegistration || ''}
+                  onChange={(e) => setClientForm({ ...clientForm, stateRegistration: e.target.value })}
+                  className="mt-1 w-full border rounded-lg px-3 py-2"
+                />
+              </div>
+
+            
               <div className="flex gap-3 pt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 border border-slate-300 rounded-lg text-slate-600 font-medium hover:bg-slate-50">Cancelar</button>
                 <button

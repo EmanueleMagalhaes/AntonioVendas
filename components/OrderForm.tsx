@@ -1,483 +1,287 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Trash2, Save, Share2, FileText, CheckCircle, Search, User, Package, Building2, Truck, CreditCard, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Save, FileText, CheckCircle, Search, User, Package, CreditCard, Loader2, Send } from 'lucide-react';
 import { Client, Product, OrderItem, Order } from '../types';
-import { saveOrder } from '../services/storageService';
-import { generateOrderPDF, shareViaWhatsApp } from '../services/pdfService';
+import { saveOrder, updateOrder } from '../services/storageService';
+import { generateOrderPDF } from '../services/pdfService';
+import { serverTimestamp } from 'firebase/firestore';
 
 interface OrderFormProps {
   clients: Client[];
   products: Product[];
   onOrderSaved: () => void;
+  initialOrder?: Order | null;
+  onNewOrder?: () => void;
 }
 
 const SIZES = ['33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46'];
 
-const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved }) => {
-  // State
+const OrderForm: React.FC<OrderFormProps> = ({ clients, products, onOrderSaved, initialOrder, onNewOrder }) => {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [clientSearch, setClientSearch] = useState('');
   const [showClientList, setShowClientList] = useState(false);
-
   const [cart, setCart] = useState<OrderItem[]>([]);
-  
-  // Item Entry State
   const [refInput, setRefInput] = useState('');
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [sizeQuantities, setSizeQuantities] = useState<Record<string, number>>({});
-  const [showProductSuggestions, setShowProductSuggestions] = useState(false);
-
-  // Payment & Shipping State
   const [freight, setFreight] = useState('FOB');
   const [paymentTerms, setPaymentTerms] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-
-  // Feedback State
+  
+  // AJUSTE 1: Valor inicial padrão para a forma de pagamento
+  const [paymentMethod, setPaymentMethod] = useState('Boleto Bancário');
+  
   const [isSaving, setIsSaving] = useState(false);
   const [savedOrder, setSavedOrder] = useState<Order | null>(null);
 
-  // -- Client Search Logic --
-  const filteredClients = clients.filter(c => {
-    const term = clientSearch.toLowerCase();
-    return c.name.toLowerCase().includes(term) || 
-           (c.companyName && c.companyName.toLowerCase().includes(term));
-  });
-
-  // -- Product Search Logic --
   useEffect(() => {
-    if (refInput.length > 1) {
-      const exactMatch = products.find(p => p.reference.toLowerCase() === refInput.toLowerCase());
-      if (exactMatch) {
-        setActiveProduct(exactMatch);
-      } else {
-        // Only reset active product if it doesn't match anymore
-         if (activeProduct && activeProduct.reference.toLowerCase() !== refInput.toLowerCase()) {
-            setActiveProduct(null);
-            setSizeQuantities({});
-         }
-      }
-      setShowProductSuggestions(true);
-    } else {
-      setShowProductSuggestions(false);
-      if(!refInput) {
-        setActiveProduct(null);
-        setSizeQuantities({});
-      }
+    if (initialOrder) {
+      const client = clients.find(c => c.id === initialOrder.clientId);
+      if (client) setSelectedClient(client);
+      setCart(initialOrder.items);
+      setFreight(initialOrder.freight || 'FOB');
+      setPaymentTerms(initialOrder.paymentTerms || '');
+      setPaymentMethod(initialOrder.paymentMethod || 'Boleto Bancário');
     }
-  }, [refInput, products]);
+  }, [initialOrder, clients]);
 
-  const filteredProducts = products.filter(p => 
-    p.reference.toLowerCase().includes(refInput.toLowerCase())
-  ).slice(0, 5);
+  const filteredClients = useMemo(() => {
+    return clients.filter(c => 
+      (c.companyName?.toLowerCase() || "").includes(clientSearch.toLowerCase()) || 
+      (c.name?.toLowerCase() || "").includes(clientSearch.toLowerCase())
+    );
+  }, [clients, clientSearch]);
 
-  // -- Size Input Logic --
-  const handleSizeChange = (size: string, val: string) => {
-    const qty = parseInt(val) || 0;
-    setSizeQuantities(prev => ({
-      ...prev,
-      [size]: qty
-    }));
+  const filteredProducts = useMemo(() => {
+    if (!refInput) return [];
+    return products.filter(p => p.reference.toUpperCase().includes(refInput.toUpperCase())).slice(0, 5);
+  }, [products, refInput]);
+
+  const currentTotalQty = useMemo(() => Object.values(sizeQuantities).reduce((a, b) => a + b, 0), [sizeQuantities]);
+  const totalOrderValue = useMemo(() => cart.reduce((acc, item) => acc + item.total, 0), [cart]);
+
+  const handleSizeChange = (size: string, value: string) => {
+    const qty = parseInt(value) || 0;
+    setSizeQuantities(prev => ({ ...prev, [size]: qty }));
   };
 
-  const currentTotalQty = useMemo(() => {
-    return Object.values(sizeQuantities).reduce((a: number, b: number) => a + b, 0);
-  }, [sizeQuantities]);
-
-  const currentTotalPrice = useMemo(() => {
-    return activeProduct ? currentTotalQty * activeProduct.price : 0;
-  }, [currentTotalQty, activeProduct]);
-
-
-  // -- Cart Logic --
   const addItem = () => {
-    if (!activeProduct) return;
-    if (currentTotalQty <= 0) {
-      alert("Insira a quantidade em pelo menos uma numeração.");
-      return;
-    }
-
+    if (!activeProduct || currentTotalQty === 0) return;
+    
     const newItem: OrderItem = {
       productId: activeProduct.id,
       reference: activeProduct.reference,
       description: activeProduct.description,
-      quantity: currentTotalQty,
       unitPrice: activeProduct.price,
-      total: currentTotalPrice,
+      quantity: currentTotalQty,
       sizes: { ...sizeQuantities },
-      color: activeProduct.color,
+      total: currentTotalQty * activeProduct.price,
+      color: activeProduct.color || '',
       sole: activeProduct.sole || '',
       material: activeProduct.material || ''
     };
 
     setCart([...cart, newItem]);
-    // Reset inputs
-    setRefInput('');
     setActiveProduct(null);
+    setRefInput('');
     setSizeQuantities({});
-    setShowProductSuggestions(false);
   };
 
-  const removeItem = (index: number) => {
-    const newCart = [...cart];
-    newCart.splice(index, 1);
-    setCart(newCart);
-  };
-
-  const totalOrderValue = cart.reduce((acc, item) => acc + item.total, 0) || 0;
-
-  // -- Finalize Order --
   const handleSaveOrder = async () => {
     if (!selectedClient || cart.length === 0) return;
-
     setIsSaving(true);
     try {
-      const order = await saveOrder({
+      const orderData: Omit<Order, 'id'> = {
         clientId: selectedClient.id,
         clientName: selectedClient.companyName || selectedClient.name,
         items: cart,
         totalValue: totalOrderValue,
-        status: 'pending',
+        date: serverTimestamp(),
+        status: 'pendente',
         freight,
         paymentTerms,
         paymentMethod
-      });
+      };
 
-      setSavedOrder(order);
+      let result: Order;
+      if (initialOrder?.id) {
+        await updateOrder(initialOrder.id, orderData);
+        result = { ...orderData, id: initialOrder.id } as Order;
+      } else {
+        const saved = await saveOrder(orderData);
+        result = saved as Order;
+      }
+
+      setSavedOrder(result);
       onOrderSaved();
     } catch (error) {
-      console.error("Error saving order", error);
-      alert("Erro ao salvar o pedido.");
+      console.error(error);
+      alert("Erro ao salvar pedido");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleNewOrder = () => {
+  const removeItem = (index: number) => {
+    setCart(cart.filter((_, i) => i !== index));
+  };
+
+  const handleNewOrderLocal = () => {
     setSavedOrder(null);
     setCart([]);
     setSelectedClient(null);
-    setClientSearch('');
-    setFreight('FOB');
     setPaymentTerms('');
-    setPaymentMethod('');
+    // AJUSTE 2: Resetar para o padrão
+    setPaymentMethod('Boleto Bancário');
+    if (onNewOrder) onNewOrder();
   };
 
   if (savedOrder && selectedClient) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-6 text-center animate-fade-in">
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full">
-          <CheckCircle className="text-green-500 w-20 h-20 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-slate-800 mb-2">Sucesso!</h2>
-          <p className="text-slate-600 mb-6">O pedido #{savedOrder.id.toUpperCase()} foi salvo corretamente.</p>
-          
-          <div className="space-y-3">
-            <button 
-              onClick={() => generateOrderPDF(savedOrder, selectedClient).save(`Pedido_${savedOrder.id}.pdf`)}
-              className="w-full py-3 bg-slate-800 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-slate-900"
-            >
-              <FileText size={20} /> Baixar PDF
-            </button>
-            <button 
-              onClick={() => shareViaWhatsApp(savedOrder, selectedClient)}
-              className="w-full py-3 bg-green-600 text-white rounded-lg flex items-center justify-center gap-2 hover:bg-green-700"
-            >
-              <Share2 size={20} /> Enviar no WhatsApp
-            </button>
-            <button 
-              onClick={handleNewOrder}
-              className="w-full py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 mt-4"
-            >
-              Criar Novo Pedido
-            </button>
+      <div className="flex flex-col items-center justify-center min-h-[80vh] p-6 text-center">
+          <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full border border-slate-100">
+            <CheckCircle className="text-emerald-500 w-16 h-16 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Pedido Gravado!</h2>
+            <p className="text-slate-500 mb-8">O pedido para <strong>{savedOrder.clientName}</strong> foi salvo com sucesso.</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={() => generateOrderPDF(savedOrder, selectedClient).save()} className="w-full bg-indigo-600 text-white p-4 rounded-xl flex items-center justify-center gap-2 font-bold transition-all shadow-lg shadow-indigo-100">
+                <FileText size={20}/> Baixar PDF
+              </button>
+              <button onClick={handleNewOrderLocal} className="w-full bg-slate-100 text-slate-700 p-4 rounded-xl flex items-center justify-center gap-2 font-bold">
+                <Plus size={20}/> Novo Pedido
+              </button>
+            </div>
           </div>
-        </div>
       </div>
     );
   }
 
   return (
     <div className="max-w-7xl mx-auto p-4 lg:p-8 grid grid-cols-1 xl:grid-cols-4 gap-8">
-      
-      {/* Left Column: Inputs */}
       <div className="xl:col-span-3 space-y-6">
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">Novo Pedido</h2>
-
-        {/* Step 1: Select Client */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 relative z-20">
-          <div className="flex items-center gap-2 mb-4 text-slate-800 font-semibold">
-            <User className="text-indigo-600" size={20} />
-            <h3>1. Dados do Cliente</h3>
-          </div>
-          
+        {/* Seção 1: Cliente */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border">
+          <div className="flex items-center gap-2 mb-4 font-semibold"><User className="text-indigo-600" size={20} /><h3>1. Cliente</h3></div>
           {selectedClient ? (
-            <div className="flex justify-between items-center bg-indigo-50 p-4 rounded-lg border border-indigo-100">
-              <div>
-                <p className="font-bold text-indigo-900 flex items-center gap-2">
-                  <Building2 size={18} />
-                  {selectedClient.companyName || selectedClient.name}
-                </p>
-                <div className="text-sm text-indigo-600 mt-1">
-                   <span className="font-medium">Resp:</span> {selectedClient.name} • {selectedClient.city}
-                </div>
-                <div className="text-xs text-indigo-500 mt-0.5">
-                   Tel: {selectedClient.phone}
-                </div>
-              </div>
-              <button onClick={() => setSelectedClient(null)} className="text-sm text-indigo-500 underline hover:text-indigo-700">Trocar</button>
+            <div className="flex justify-between items-center bg-indigo-50 p-4 rounded-lg border">
+              <p className="font-bold">{selectedClient.companyName}</p>
+              <button onClick={() => setSelectedClient(null)} className="text-indigo-500 text-sm font-bold">Trocar</button>
             </div>
           ) : (
             <div className="relative">
-              <Search className="absolute left-3 top-3 text-slate-400" size={20} />
-              <input 
-                type="text" 
-                placeholder="Buscar por empresa ou responsável..."
-                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-200 outline-none"
-                value={clientSearch}
-                onChange={(e) => { setClientSearch(e.target.value); setShowClientList(true); }}
-                onFocus={() => setShowClientList(true)}
-              />
+              <input type="text" placeholder="Buscar cliente..." className="w-full p-3 border rounded-lg" value={clientSearch} onChange={(e) => { setClientSearch(e.target.value); setShowClientList(true); }} />
               {showClientList && clientSearch && (
-                <ul className="absolute z-30 w-full bg-white border mt-1 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                <ul className="absolute z-30 w-full bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
                   {filteredClients.map(c => (
-                    <li 
-                      key={c.id} 
-                      className="p-3 hover:bg-slate-50 cursor-pointer border-b last:border-0"
-                      onClick={() => { setSelectedClient(c); setShowClientList(false); setClientSearch(''); }}
-                    >
-                      <div className="font-medium flex flex-col">
-                        <span>{c.companyName || c.name}</span>
-                        {c.companyName && <span className="text-xs font-normal text-slate-500">Resp: {c.name}</span>}
-                      </div>
-                      <div className="text-xs text-slate-500">{c.city}</div>
+                    <li key={c.id} className="p-3 hover:bg-indigo-50 cursor-pointer border-b last:border-0" onClick={() => { setSelectedClient(c); setShowClientList(false); }}>
+                      {c.companyName}
                     </li>
                   ))}
-                  {filteredClients.length === 0 && <li className="p-3 text-slate-500 text-sm">Nenhum cliente encontrado.</li>}
                 </ul>
               )}
             </div>
           )}
         </div>
 
-        {/* Step 2: Add Products */}
-        <div className={`bg-white p-6 rounded-xl shadow-sm border border-slate-200 transition-opacity ${!selectedClient ? 'opacity-50 pointer-events-none' : ''}`}>
-          <div className="flex items-center gap-2 mb-6 text-slate-800 font-semibold">
-            <Package className="text-indigo-600" size={20} />
-            <h3>2. Adicionar Produtos</h3>
-          </div>
-          
-          {/* Reference Input */}
-          <div className="mb-6 relative z-10">
-            <label className="block text-xs font-bold text-slate-500 mb-1 uppercase">Referência do Produto</label>
-            <input 
-                type="text"
-                className="w-full md:w-1/2 border p-3 rounded-lg uppercase focus:ring-2 focus:ring-indigo-200 outline-none font-bold text-lg tracking-wide"
-                placeholder="DIGITE A REF..."
-                value={refInput}
-                onChange={(e) => setRefInput(e.target.value.toUpperCase())}
-              />
-              
-              {/* Autocomplete Dropdown */}
-              {showProductSuggestions && filteredProducts.length > 0 && (
-                <div className="absolute z-20 w-full md:w-1/2 bg-white border mt-1 rounded-lg shadow-xl">
-                  {filteredProducts.map(p => (
-                    <div 
-                      key={p.id}
-                      className="p-3 hover:bg-indigo-50 cursor-pointer border-b last:border-0"
-                      onClick={() => { setActiveProduct(p); setRefInput(p.reference); setShowProductSuggestions(false); }}
-                    >
-                      <div className="font-bold text-indigo-700">{p.reference}</div>
-                      <div className="text-sm text-slate-600">{p.description}</div>
-                    </div>
-                  ))}
+        {/* Seção 2: Produtos */}
+        <div className={`bg-white p-6 rounded-xl shadow-sm border ${!selectedClient ? 'opacity-50' : ''}`}>
+          <div className="flex items-center gap-2 mb-6 font-semibold"><Package className="text-indigo-600" size={20} /><h3>2. Produtos</h3></div>
+          <input type="text" placeholder="Referência..." className="w-full border p-3 rounded-lg uppercase font-bold" value={refInput} onChange={(e) => setRefInput(e.target.value)} />
+          {refInput && !activeProduct && (
+            <div className="border rounded-lg mt-2 bg-white shadow-md">
+              {filteredProducts.map(p => (
+                <div key={p.id} className="p-3 hover:bg-indigo-50 cursor-pointer border-b last:border-0" onClick={() => { setActiveProduct(p); setRefInput(p.reference); }}>
+                  <span className="font-bold">{p.reference}</span> - {p.description}
                 </div>
-              )}
-          </div>
-
-          {/* Product Details & Grid - Only show if product is found */}
+              ))}
+            </div>
+          )}
           {activeProduct && (
-            <div className="animate-fade-in">
-               {/* Product Info Cards */}
-               <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200 items-end">
-                  <div className="md:col-span-2">
-                    <span className="text-xs text-slate-400 font-bold uppercase block mb-1">Descrição</span>
-                    <p className="font-semibold text-slate-800 text-sm">{activeProduct.description}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-slate-400 font-bold uppercase block mb-1">Solado</span>
-                    <p className="font-semibold text-slate-700 text-sm">{activeProduct.sole || '-'}</p>
-                  </div>
-                   <div>
-                    <span className="text-xs text-slate-400 font-bold uppercase block mb-1">Material</span>
-                    <p className="font-semibold text-slate-700 text-sm">{activeProduct.material || '-'}</p>
-                  </div>
-                  <div className="text-right bg-white p-2 rounded border border-slate-100 shadow-sm w-full">
-                    <span className="text-xs text-slate-400 font-bold uppercase block">Preço Unit.</span>
-                    <p className="font-bold text-lg text-emerald-600">R$ {activeProduct.price.toFixed(2)}</p>
-                  </div>
+            <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-indigo-100">
+               <div className="flex flex-wrap gap-2 mb-4">
+                 {SIZES.map(size => (
+                   <div key={size} className="w-12">
+                     <span className="text-[10px] block text-center font-bold text-slate-500">{size}</span>
+                     <input type="number" className="w-full border rounded text-center py-2" value={sizeQuantities[size] || ''} onChange={(e) => handleSizeChange(size, e.target.value)} />
+                   </div>
+                 ))}
                </div>
-
-               {/* Grid Input */}
-               <div className="mb-6">
-                  <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Grade de Numeração (Pares)</label>
-                  <div className="flex flex-wrap gap-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                     {SIZES.map(size => (
-                        <div key={size} className="flex flex-col items-center w-12">
-                           <span className="text-xs font-bold text-slate-500 mb-1">{size}</span>
-                           <input 
-                             type="number"
-                             min="0"
-                             className={`w-full h-10 text-center border rounded-md focus:ring-2 focus:ring-indigo-500 outline-none transition-all ${sizeQuantities[size] > 0 ? 'bg-indigo-50 border-indigo-300 font-bold text-indigo-700' : 'border-slate-300'}`}
-                             value={sizeQuantities[size] || ''}
-                             onChange={(e) => handleSizeChange(size, e.target.value)}
-                           />
-                        </div>
-                     ))}
-                  </div>
-               </div>
-
-               {/* Footer Actions */}
-               <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                  <div className="text-sm text-slate-600">
-                     <span className="font-semibold">Total Pares:</span> {currentTotalQty}
-                     <span className="mx-3">|</span>
-                     <span className="font-semibold">Total Item:</span> R$ {currentTotalPrice.toFixed(2)}
-                  </div>
-                  <button 
-                    onClick={addItem}
-                    className="px-8 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 shadow-md flex items-center gap-2 font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed transition-all"
-                    disabled={currentTotalQty === 0}
-                  >
-                    <Plus size={20} /> Adicionar
-                  </button>
-               </div>
+               <button onClick={addItem} className="w-full bg-indigo-600 text-white p-3 rounded-lg font-bold">Adicionar {currentTotalQty} pares</button>
             </div>
-          )}
-          
-          {!activeProduct && refInput.length > 0 && !showProductSuggestions && (
-             <div className="p-4 bg-yellow-50 text-yellow-700 rounded-lg border border-yellow-200">
-                Produto não encontrado. Verifique a referência.
-             </div>
           )}
         </div>
 
-        {/* Step 3: Payment & Shipping */}
-        <div className={`bg-white p-6 rounded-xl shadow-sm border border-slate-200 transition-opacity ${cart.length === 0 ? 'opacity-50 pointer-events-none' : ''}`}>
-          <div className="flex items-center gap-2 mb-6 text-slate-800 font-semibold">
-            <CreditCard className="text-indigo-600" size={20} />
-            <h3>3. Pagamento e Entrega</h3>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Frete</label>
-              <div className="flex bg-slate-100 rounded-lg p-1">
-                <button 
-                  onClick={() => setFreight('CIF')}
-                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${freight === 'CIF' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
-                >
-                  CIF
-                </button>
-                <button 
-                  onClick={() => setFreight('FOB')}
-                  className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${freight === 'FOB' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500'}`}
-                >
-                  FOB
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Condição de Pagamento</label>
-              <input 
-                type="text"
-                className="w-full border p-2.5 rounded-lg focus:ring-2 focus:ring-indigo-200 outline-none"
-                placeholder="Ex: 30/60/90 dias"
-                value={paymentTerms}
-                onChange={(e) => setPaymentTerms(e.target.value)}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 mb-2 uppercase">Forma de Pagamento</label>
-              <select 
-                className="w-full border p-2.5 rounded-lg focus:ring-2 focus:ring-indigo-200 outline-none bg-white"
-                value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value)}
-              >
-                <option value="">Selecione...</option>
-                <option value="Boleto Bancário">Boleto Bancário</option>
-                <option value="Pix">Pix</option>
-                <option value="Cartão de Crédito">Cartão de Crédito</option>
-                <option value="Dinheiro">Dinheiro</option>
-                <option value="Cheque">Cheque</option>
-                <option value="Depósito">Depósito</option>
-              </select>
-            </div>
+        {/* Seção 3: Pagamento */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border">
+          <div className="flex items-center gap-2 mb-6 font-semibold"><CreditCard className="text-indigo-600" size={20} /><h3>3. Pagamento</h3></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+             <div>
+               <label className="text-xs font-bold text-slate-500 mb-1 block">FRETE</label>
+               <select className="w-full border p-3 rounded-lg bg-white" value={freight} onChange={(e) => setFreight(e.target.value)}>
+                 <option value="FOB">FOB</option>
+                 <option value="CIF">CIF</option>
+               </select>
+             </div>
+             <div>
+               <label className="text-xs font-bold text-slate-500 mb-1 block">CONDIÇÃO</label>
+               <input type="text" placeholder="Ex: 30/60 dias" className="w-full border p-3 rounded-lg" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} />
+             </div>
+             <div>
+               <label className="text-xs font-bold text-slate-500 mb-1 block">FORMA</label>
+               {/* AJUSTE 3: Trocado de input para select */}
+               <select className="w-full border p-3 rounded-lg bg-white font-bold text-indigo-700" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                 <option value="Boleto Bancário">Boleto Bancário</option>
+                 <option value="Depósito">Depósito</option>
+               </select>
+             </div>
           </div>
         </div>
       </div>
 
-      {/* Right Column: Summary */}
+      {/* Resumo Lateral */}
       <div className="xl:col-span-1">
-        <div className="bg-white rounded-xl shadow-lg border border-slate-100 sticky top-6">
-          <div className="p-5 border-b border-slate-100 bg-slate-50 rounded-t-xl">
-             <h3 className="font-bold text-slate-700">Resumo do Pedido</h3>
+        <div className="bg-white rounded-2xl shadow-xl border border-slate-200 sticky top-6 overflow-hidden">
+          <div className="p-4 bg-slate-900 text-white font-bold flex items-center gap-2">
+            <Package size={18} /> Resumo do Pedido
           </div>
           
-          <div className="p-4 max-h-[calc(100vh-300px)] overflow-y-auto space-y-3">
-             {cart.length === 0 ? (
-               <p className="text-center text-slate-400 py-8">Carrinho vazio</p>
-             ) : (
-               cart.map((item, idx) => (
-                 <div key={idx} className="flex flex-col text-sm p-3 bg-white border border-slate-100 rounded-lg shadow-sm hover:border-indigo-200 transition-all group">
-                    <div className="flex justify-between items-start mb-2">
-                      <div>
-                        <div className="font-bold text-slate-800">{item.reference}</div>
-                        <div className="text-xs text-slate-500 truncate w-32">{item.description}</div>
-                      </div>
-                      <button onClick={() => removeItem(idx)} className="text-red-400 hover:text-red-600 p-1">
-                         <Trash2 size={16} />
-                      </button>
+          <div className="p-4 max-h-[400px] overflow-y-auto space-y-3">
+            {cart.map((item, i) => (
+              <div key={i} className="bg-slate-50 p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <span className="text-xs font-bold text-indigo-600 block uppercase">Ref: {item.reference}</span>
+                    <span className="text-[11px] text-slate-500 leading-tight">{item.description}</span>
+                  </div>
+                  <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600 p-1"><Trash2 size={16}/></button>
+                </div>
+                
+                <div className="flex justify-between items-end border-t border-slate-100 pt-2">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded text-sm font-black">
+                      {item.quantity} {item.quantity === 1 ? 'PAR' : 'PARES'}
                     </div>
-                    
-                    {/* Mini Grid Preview */}
-                    <div className="flex flex-wrap gap-1 mb-2">
-                       {Object.entries(item.sizes).filter(([_, q]) => (q as any) > 0).map(([size, qty]) => (
-                          <span key={size} className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
-                             {size}: <b>{qty}</b>
-                          </span>
-                       ))}
-                    </div>
-
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-50 mt-auto">
-                       <span className="text-xs text-slate-500">{item.quantity} pares</span>
-                       <span className="font-bold text-indigo-600">R$ {item.total.toFixed(2)}</span>
-                    </div>
-                 </div>
-               ))
-             )}
+                  </div>
+                  <span className="font-bold text-slate-700">R$ {item.total.toFixed(2)}</span>
+                </div>
+              </div>
+            ))}
+            {cart.length === 0 && <p className="text-center text-slate-400 py-10 text-sm">Carrinho vazio</p>}
           </div>
 
-          <div className="p-5 bg-slate-50 rounded-b-xl border-t border-slate-100">
-             <div className="flex justify-between items-center mb-2">
-                <span className="text-slate-500">Itens</span>
-                <span className="font-semibold">{cart.length}</span>
-             </div>
-             <div className="flex justify-between items-center mb-6">
-                <span className="text-slate-500">Total Geral</span>
-                <span className="text-2xl font-bold text-slate-800">R$ {totalOrderValue.toFixed(2).replace('.', ',')}</span>
-             </div>
-             
-             <button 
-              onClick={handleSaveOrder}
-              disabled={cart.length === 0 || !selectedClient || isSaving}
-              className="w-full py-4 bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-600 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2"
-             >
-               {isSaving ? <Loader2 className="animate-spin" /> : <><Save size={20} /> Finalizar Pedido</>}
-             </button>
+          <div className="p-5 bg-indigo-50 border-t border-indigo-100">
+            <div className="flex justify-between text-xs text-indigo-600 font-bold mb-1 uppercase tracking-wider">
+              <span>Total de Pares:</span>
+              <span>{cart.reduce((acc, item) => acc + item.quantity, 0)}</span>
+            </div>
+            <div className="flex justify-between text-lg font-bold mb-4 text-slate-800">
+              <span>Total Geral:</span>
+              <span className="text-2xl text-indigo-700">R$ {totalOrderValue.toFixed(2)}</span>
+            </div>
+            <button onClick={handleSaveOrder} disabled={isSaving || cart.length === 0 || !selectedClient} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white p-4 rounded-xl font-bold flex justify-center items-center gap-2 disabled:opacity-50 transition-all">
+              {isSaving ? <Loader2 className="animate-spin" /> : <><Save size={20} /> Gravar Pedido</>}
+            </button>
           </div>
         </div>
       </div>
-
     </div>
   );
 };
