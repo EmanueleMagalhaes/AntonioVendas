@@ -1,5 +1,4 @@
-import { db } from '../src/firebaseConfig';
-
+import { db } from '../firebaseConfig';
 import { 
   collection, 
   getDocs,
@@ -7,8 +6,10 @@ import {
   setDoc, 
   addDoc, 
   deleteDoc,
+  updateDoc,
   query, 
-  where 
+  where,
+  serverTimestamp,
 } from 'firebase/firestore';
 
 import { Client, Product, Order } from '../types';
@@ -18,72 +19,92 @@ import { Client, Product, Order } from '../types';
 // or we use setDoc with a custom ID.
 
 // --- Clients ---
+
 export const getClients = async (): Promise<Client[]> => {
-  const querySnapshot = await getDocs(collection(db, 'clients'));
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+  try {
+    const querySnapshot = await getDocs(collection(db, 'clients'));
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Client));
+  } catch (error) {
+    console.error("❌ Erro ao buscar clientes:", error);
+    throw error;
+  }
 };
+
+
 
 export const saveClient = async (client: Omit<Client, 'id' | 'createdAt'> & { id?: string }): Promise<Client> => {
-  const collectionRef = collection(db, 'clients');
-  
-  if (client.id) {
-    // Update existing
-    const docRef = doc(db, 'clients', client.id);
-    const updatedClient = { ...client }; 
-    // Ensure we don't overwrite createdAt if we don't have it in the object, 
-    // but usually we just merge. Firestore setDoc with {merge: true} is an option,
-    // but here we are passing the full object.
-    // Let's grab the existing createdAt if possible or just not worry for now as we pass full objects.
-    // For simplicity in this migration, we update the whole doc.
-    await setDoc(docRef, updatedClient, { merge: true });
-    return { id: client.id, ...updatedClient } as Client;
-  } else {
-    // Create new
-    const newClientData = {
-      ...client,
-      createdAt: Date.now(),
-    };
-    const docRef = await addDoc(collectionRef, newClientData);
-    return { id: docRef.id, ...newClientData } as Client;
+  try {
+    const collectionRef = collection(db, 'clients');
+    if (client.id) {
+      const docRef = doc(db, 'clients', client.id);
+      await setDoc(docRef, client, { merge: true });
+      return { id: client.id, ...client } as Client;
+    } else {
+      const newClientData = { ...client, createdAt: serverTimestamp() }; // ✅ Corrigido
+      const docRef = await addDoc(collectionRef, newClientData);
+      return { id: docRef.id, ...newClientData } as Client;
+    }
+  } catch (error) {
+    console.error("❌ Erro ao salvar cliente:", error);
+    throw error;
   }
 };
+
 
 // --- Products ---
+
 export const getProducts = async (): Promise<Product[]> => {
-  const querySnapshot = await getDocs(collection(db, 'products'));
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+  try {
+    const querySnapshot = await getDocs(collection(db, 'products'));
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+  } catch (error) {
+    console.error("❌ Erro ao buscar produtos:", error);
+    throw error;
+  }
 };
+
+
 
 export const deleteProduct = async (id: string): Promise<void> => {
-  await deleteDoc(doc(db, 'products', id));
+  try {
+    await deleteDoc(doc(db, 'products', id));
+  } catch (error) {
+    console.error("❌ Erro ao deletar produto:", error);
+    throw error;
+  }
 };
+
 
 export const saveProduct = async (product: Omit<Product, 'id'> & { id?: string }): Promise<Product> => {
-  const collectionRef = collection(db, 'products');
+  try {
+    const collectionRef = collection(db, 'products');
 
-  if (product.id) {
-    // Update specific ID
-    const docRef = doc(db, 'products', product.id);
-    await setDoc(docRef, product, { merge: true });
-    return { ...product } as Product;
+    if (product.id) {
+      const docRef = doc(db, 'products', product.id);
+      await setDoc(docRef, product, { merge: true });
+      return { ...product } as Product;
+    }
+
+    // Check for duplicates by reference if creating new
+    const q = query(collectionRef, where("reference", "==", product.reference));
+    const querySnapshot = await getDocs(q);
+
+    if (!querySnapshot.empty) {
+      const existingDoc = querySnapshot.docs[0];
+      const docRef = doc(db, 'products', existingDoc.id);
+      await setDoc(docRef, product, { merge: true });
+      return { id: existingDoc.id, ...product } as Product;
+    }
+
+    // Create New
+    const docRef = await addDoc(collectionRef, product);
+    return { id: docRef.id, ...product } as Product;
+  } catch (error) {
+    console.error("❌ Erro ao salvar produto:", error);
+    throw error;
   }
-
-  // Check for duplicates by reference if creating new
-  const q = query(collectionRef, where("reference", "==", product.reference));
-  const querySnapshot = await getDocs(q);
-  
-  if (!querySnapshot.empty) {
-    // Update the first matching product
-    const existingDoc = querySnapshot.docs[0];
-    const docRef = doc(db, 'products', existingDoc.id);
-    await setDoc(docRef, product, { merge: true });
-    return { id: existingDoc.id, ...product } as Product;
-  }
-
-  // Create New
-  const docRef = await addDoc(collectionRef, product);
-  return { id: docRef.id, ...product } as Product;
 };
+
 
 // Seed initial products
 export const seedInitialProducts = async () => {
@@ -195,25 +216,123 @@ export const seedInitialProducts = async () => {
   for (const item of initials) {
     await addDoc(collectionRef, item);
   }
+  console.log("✅ Produtos iniciais adicionados ao Firestore");
 };
+
 
 // --- Orders ---
 export const getOrders = async (): Promise<Order[]> => {
-  const querySnapshot = await getDocs(collection(db, 'orders'));
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+  try {
+    const querySnapshot = await getDocs(collection(db, 'orders'));
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+  } catch (error) {
+    console.error("❌ Erro ao buscar pedidos:", error);
+    throw error;
+  }
 };
 
 export const saveOrder = async (order: Omit<Order, 'id' | 'date'>): Promise<Order> => {
-  const newOrderData = {
-    ...order,
-    date: Date.now(),
-  };
-  const docRef = await addDoc(collection(db, 'orders'), newOrderData);
-  return { id: docRef.id, ...newOrderData } as Order;
+  try {
+    const newOrderData = { ...order, date: serverTimestamp() }; // ✅ Corrigido
+    const docRef = await addDoc(collection(db, 'orders'), newOrderData);
+    return { id: docRef.id, ...newOrderData } as Order;
+  } catch (error) {
+    console.error("❌ Erro ao salvar pedido:", error);
+    throw error;
+  }
+};
+
+// Atualizar Pedido
+export const updateOrder = async (order: Order): Promise<void> => {
+  try {
+    if (!order.id) throw new Error("ID do pedido é obrigatório para atualização");
+    
+    // Removemos campos que não devem ser sobrescritos acidentalmente se não forem passados, 
+    // mas garantimos que a data original seja preservada se não formos mudar a data de criação.
+    // Aqui assumimos que 'date' é mantido.
+    
+    const docRef = doc(db, 'orders', order.id);
+    // Usamos updateDoc para atualizar apenas os campos passados
+    await updateDoc(docRef, { ...order }); 
+  } catch (error) {
+    console.error("❌ Erro ao atualizar pedido:", error);
+    throw error;
+  }
+};
+
+//  Deletar Pedido
+export const deleteOrder = async (id: string): Promise<void> => {
+  try {
+    await deleteDoc(doc(db, 'orders', id));
+  } catch (error) {
+    console.error("❌ Erro ao deletar pedido:", error);
+    throw error;
+  }
 };
 
 export const getOrdersByClient = async (clientId: string): Promise<Order[]> => {
-  const q = query(collection(db, 'orders'), where("clientId", "==", clientId));
-  const querySnapshot = await getDocs(q);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+  try {
+    const q = query(collection(db, 'orders'), where("clientId", "==", clientId));
+    const querySnapshot = await getDocs(q);
+    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+  } catch (error) {
+    console.error("❌ Erro ao buscar pedidos do cliente:", error);
+    throw error;
+  }
+};
+
+
+
+
+// --- Seed Initial Clients ---
+
+export const seedInitialClients = async () => {
+  try {
+    const currentClients = await getClients();
+    if (currentClients.length > 0) return;
+
+    const initialClients: Omit<Client, 'id'>[] = [
+      {
+        companyName: "Empresa Teste",
+        name: "João Silva",
+        phone: "99999-9999",
+        phone2: "",
+        email: "joao@empresa.com",
+        zipCode: "89200-000",
+        address: "Rua das Flores",
+        number: "123",
+        neighborhood: "Centro",
+        city: "Joinville",
+        state: "SC",
+        cpfCnpj: "123.456.789-00",
+        stateRegistration: "",
+        createdAt: serverTimestamp() // ✅ Adicionado
+      },
+      {
+        companyName: "Comércio Exemplo",
+        name: "Maria Souza",
+        phone: "98888-8888",
+        phone2: "",
+        email: "maria@comercio.com",
+        zipCode: "89210-000",
+        address: "Av. Brasil",
+        number: "456",
+        neighborhood: "América",
+        city: "Joinville",
+        state: "SC",
+        cpfCnpj: "12.345.678/0001-99",
+        stateRegistration: "123456",
+        createdAt: serverTimestamp() // ✅ Adicionado
+      }
+    ];
+
+    const collectionRef = collection(db, 'clients');
+    for (const client of initialClients) {
+      await addDoc(collectionRef, client);
+    }
+    console.log("✅ Clientes iniciais adicionados ao Firestore");
+  } catch (error) {
+    console.error("❌ Erro ao adicionar clientes iniciais:", error);
+    throw error;
+  }
 };
