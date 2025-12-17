@@ -2,10 +2,35 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Order, Client } from '../types';
 
-
 export const generateOrderPDF = (order: Order, client: Client) => {
-  // Landscape orientation for wide table
   const doc = new jsPDF({ orientation: 'landscape' });
+
+  // --- TRATAMENTO DA DATA (CORREÇÃO) ---
+  let dateDisplay = '';
+  
+  const formatDate = (dateValue: any) => {
+    if (!dateValue) return new Date().toLocaleDateString('pt-BR');
+    
+    // Caso 1: Timestamp do Firebase (possui .seconds)
+    if (dateValue.seconds) {
+      return new Date(dateValue.seconds * 1000).toLocaleDateString('pt-BR');
+    }
+    
+    // Caso 2: Objeto Date ou String de data
+    const d = new Date(dateValue);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('pt-BR');
+    }
+    
+    // Caso 3: Fallback para data atual se tudo falhar
+    return new Date().toLocaleDateString('pt-BR');
+  };
+
+  dateDisplay = formatDate(order.date);
+
+  // --- NUMERAÇÃO DO PEDIDO (CURTA E SÓ NÚMEROS) ---
+  // Extraímos apenas os números do ID aleatório ou pegamos os últimos 6 caracteres
+  const orderNumber = order.id.replace(/\D/g, '') || order.id.substring(order.id.length - 6).toUpperCase();
 
   // Header
   doc.setFontSize(22);
@@ -14,13 +39,13 @@ export const generateOrderPDF = (order: Order, client: Client) => {
   
   doc.setFontSize(10);
   doc.setTextColor(100);
-  doc.text(`Data: ${new Date(order.date).toLocaleDateString('pt-BR')}`, 14, 28);
-  doc.text(`Pedido Nº: #${order.id.toUpperCase()}`, 14, 33);
+  doc.text(`Data: ${dateDisplay}`, 14, 28);
+  doc.text(`Pedido Nº: ${orderNumber}`, 14, 33); // Exibe o número curto
 
-  // Client Info Box
+  // ... (Restante do código de informações do cliente permanece igual)
   doc.setDrawColor(200);
   doc.setFillColor(245, 247, 250);
-  doc.rect(14, 38, 270, 36, 'FD'); // Slightly taller rect
+  doc.rect(14, 38, 270, 36, 'FD');
 
   doc.setFontSize(11);
   doc.setTextColor(0);
@@ -30,7 +55,6 @@ export const generateOrderPDF = (order: Order, client: Client) => {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   
-  // Line 1: Company & Contact & Phones
   doc.setFont("helvetica", "bold");
   doc.text("Empresa:", 18, 53);
   doc.setFont("helvetica", "normal");
@@ -45,8 +69,6 @@ export const generateOrderPDF = (order: Order, client: Client) => {
   if (client.phone2) phoneText += ` / ${client.phone2}`;
   doc.text(`Tel: ${phoneText}`, 210, 53);
   
-  // Line 2: Address & Docs (CPF/CNPJ and IE)
-  // Construct Full Address
   let addressLine = client.address;
   if (client.number) addressLine += `, ${client.number}`;
   if (client.neighborhood) addressLine += ` - ${client.neighborhood}`;
@@ -68,7 +90,6 @@ export const generateOrderPDF = (order: Order, client: Client) => {
     doc.text(client.stateRegistration, 232, 59);
   }
 
-  // Line 3: Payment & Shipping
   const freight = order.freight || 'FOB';
   const payTerms = order.paymentTerms || '-';
   const payMethod = order.paymentMethod || '-';
@@ -88,10 +109,8 @@ export const generateOrderPDF = (order: Order, client: Client) => {
   doc.setFont("helvetica", "normal");
   doc.text(payMethod, 175, 67);
 
-  // Define Sizes Range
   const SIZES = ['33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46'];
 
-  // Prepare Table Body
   const tableBody = order.items.map(item => {
     const sizeColumns = SIZES.map(size => item.sizes[size] ? item.sizes[size].toString() : '');
     
@@ -108,13 +127,12 @@ export const generateOrderPDF = (order: Order, client: Client) => {
     ];
   });
 
-  // Table Header
   const head = [
     ['REF', 'DESCRIÇÃO', 'SOLADO', 'COURO', 'COR', ...SIZES, 'QTD', 'UNIT.', 'TOTAL']
   ];
 
   autoTable(doc, {
-    startY: 80, // Increased start Y slightly
+    startY: 80,
     head: head,
     body: tableBody,
     theme: 'grid',
@@ -138,15 +156,14 @@ export const generateOrderPDF = (order: Order, client: Client) => {
       valign: 'middle'
     },
     columnStyles: {
-      0: { cellWidth: 15, halign: 'left' }, // REF
-      1: { cellWidth: 60, halign: 'left' }, // Description
-      2: { cellWidth: 20 }, // Sole
-      3: { cellWidth: 20 }, // Material
-      4: { cellWidth: 20 }, // Color
-      // Size columns auto width
-      19: { cellWidth: 10, fontStyle: 'bold' }, // QTD
-      20: { cellWidth: 18 }, // Unit Price
-      21: { cellWidth: 20, fontStyle: 'bold' }  // Total Price
+      0: { cellWidth: 15, halign: 'left' },
+      1: { cellWidth: 60, halign: 'left' },
+      2: { cellWidth: 20 },
+      3: { cellWidth: 20 },
+      4: { cellWidth: 20 },
+      19: { cellWidth: 10, fontStyle: 'bold' },
+      20: { cellWidth: 18 },
+      21: { cellWidth: 20, fontStyle: 'bold' }
     },
     foot: [['', '', '', '', 'TOTAL GERAL:', ...SIZES.map(() => ''), '', '', `R$ ${order.totalValue.toFixed(2).replace('.', ',')}`]],
     footStyles: { 
@@ -157,7 +174,6 @@ export const generateOrderPDF = (order: Order, client: Client) => {
     }
   });
 
-  // Footer
   const finalY = (doc as any).lastAutoTable.finalY + 10;
   doc.setFontSize(9);
   doc.setTextColor(100);
@@ -168,17 +184,4 @@ export const generateOrderPDF = (order: Order, client: Client) => {
   }
 
   return doc;
-};
-
-export const shareViaWhatsApp = (order: Order, client: Client) => {
-  const text = `Olá ${client.name}, segue o resumo do seu pedido #${order.id.toUpperCase()}
-  
-Valor Total: R$ ${order.totalValue.toFixed(2).replace('.', ',')}
-Itens: ${order.items.length}
-Condição: ${order.paymentTerms || '-'}
-  
-Obrigado pela compra!`;
-
-  const encoded = encodeURIComponent(text);
-  window.open(`https://wa.me/${client.phone.replace(/\D/g, '')}?text=${encoded}`, '_blank');
 };
